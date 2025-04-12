@@ -51,7 +51,7 @@ filter_recipes <- function(data, tastes, ingredients, cuisine, max_time, categor
 
 # UI
 ui <- fluidPage(
-  titlePanel("🌍 What Should Anna Cook Today?"),
+  titlePanel("🌍 What Should I Cook Today?"),
   
   sidebarLayout(
     sidebarPanel(
