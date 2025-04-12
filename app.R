@@ -4,28 +4,57 @@ library(dplyr)
 library(stringr)
 library(DT)
 
-# Load recipe data
-recipe_data <- read_excel("./dt/World_Cuisine_Recipes.xlsx")
+# Load the recipe data
+recipe_data <- read_excel("./dt/World_Cuisine_Recipes_with_Both_Image_Formats.xlsx")
 
-# Helper function to filter recipes
-filter_recipes <- function(data, tastes, ingredients) {
-  data %>%
-    filter(
-      str_detect(taste_tags, paste(tastes, collapse = "|")),
-      sapply(ingredients, function(ing) str_detect(ingredients, regex(ing, ignore_case = TRUE))) %>% rowSums() > 0
-    )
+# Filtering function with corrected logic
+filter_recipes <- function(data, tastes, ingredients, cuisine) {
+  df <- data
+  
+  # Filter by cuisine (exact match, case-insensitive)
+  if (!is.null(cuisine) && cuisine != "Any") {
+    df <- df %>% filter(str_to_lower(cuisine) == str_to_lower(!!cuisine))
+  }
+  
+  # Filter by all selected taste tags
+  if (!is.null(tastes) && length(tastes) > 0) {
+    df <- df %>%
+      filter(
+        sapply(tastes, function(t) str_detect(taste_tags, regex(t, ignore_case = TRUE))) %>% rowSums() == length(tastes)
+      )
+  }
+  
+  # Filter by at least one matching ingredient
+  if (nchar(ingredients) > 0) {
+    ing_list <- str_split(ingredients, ",\\s*")[[1]]
+    df <- df %>%
+      filter(sapply(ing_list, function(ing) str_detect(ingredients, regex(ing, ignore_case = TRUE))) %>% rowSums() > 0)
+  }
+  
+  # If empty, return random fallback
+  if (nrow(df) == 0) {
+    df <- data[sample(nrow(data), 5), ]
+  }
+  
+  return(df)
 }
 
+# UI
 ui <- fluidPage(
-  titlePanel("🌍 What Should Anna Cook Today?"),
+  titlePanel("🌍 What Should I Cook Today?"),
   
   sidebarLayout(
     sidebarPanel(
-      selectInput("tastes", "Choose tastes you like:", 
-                  choices = unique(unlist(strsplit(recipe_data$taste_tags, ",\\s*"))),
+      selectInput("tastes", "Choose tastes you like:",
+                  choices = unique(unlist(strsplit(paste(recipe_data$taste_tags, collapse = ","), ",\\s*"))),
                   multiple = TRUE),
       
-      textInput("ingredients", "What ingredients do you have? (comma-separated)", ""),
+      textInput("ingredients", "What ingredients do you have? (comma-separated, optional)", ""),
+      
+      selectInput("cuisine", "Choose a cuisine (optional):",
+                  choices = c("Any", sort(unique(recipe_data$cuisine))),
+                  selected = "Any"),
+      
       actionButton("suggest", "Suggest Recipes!"),
       hr(),
       fileInput("photo_upload", "Upload a photo of your cooked dish"),
@@ -36,35 +65,27 @@ ui <- fluidPage(
     mainPanel(
       h3("🍽 Suggested Recipes"),
       DTOutput("recipe_table"),
+      br(),
       uiOutput("image_display")
     )
   )
 )
 
+# Server
 server <- function(input, output, session) {
   selected_recipe <- reactiveVal(NULL)
   
   recipe_suggestions <- eventReactive(input$suggest, {
-    req(input$tastes)
-    req(input$ingredients)
-    
-    tastes <- input$tastes
-    ingredients <- str_split(input$ingredients, ",\\s*")[[1]]
-    
-    filtered <- filter_recipes(recipe_data, tastes, ingredients)
-    
-    if (nrow(filtered) == 0) {
-      return(data.frame(Message = "No matching recipes found. Try different tastes or ingredients."))
-    }
-    
-    selected_recipe(NULL)  # reset
-    filtered
+    filter_recipes(recipe_data, input$tastes, input$ingredients, input$cuisine)
   })
   
   output$recipe_table <- renderDT({
     recipes <- recipe_suggestions()
-    datatable(recipes %>% select(food_name, category, cuisine, estimated_time_min, taste_tags, instructions), 
-              selection = "single", options = list(pageLength = 5))
+    datatable(
+      recipes %>% select(food_name, category, cuisine, taste_tags, estimated_time_min, instructions),
+      selection = "single",
+      options = list(pageLength = 5)
+    )
   })
   
   observeEvent(input$recipe_table_rows_selected, {
@@ -77,11 +98,18 @@ server <- function(input, output, session) {
   
   output$image_display <- renderUI({
     req(selected_recipe())
-    img_url <- selected_recipe()$image_url
-    if (nzchar(img_url)) {
-      tags$img(src = img_url, height = "300px")
+    img_url <- selected_recipe()$image_display_url[[1]]
+    wiki_url <- selected_recipe()$image_page_url[[1]]
+    
+    if (!is.null(img_url) && nzchar(img_url)) {
+      tagList(
+        h4("📸 Recipe Image"),
+        tags$img(src = img_url, height = "300px", style = "margin-bottom:10px; border-radius:10px;"),
+        br(),
+        tags$a("🔗 View on Wikipedia", href = wiki_url, target = "_blank")
+      )
     } else {
-      tags$p("No image uploaded yet.")
+      tags$p("No image available.")
     }
   })
   
@@ -92,15 +120,16 @@ server <- function(input, output, session) {
     # Save rating
     recipe_data$user_rating[idx] <<- input$rating_input
     
-    # Save uploaded photo (just note path here)
+    # Save uploaded photo (optional)
     if (!is.null(input$photo_upload)) {
       save_path <- paste0("www/", input$photo_upload$name)
       file.copy(input$photo_upload$datapath, save_path, overwrite = TRUE)
-      recipe_data$image_url[idx] <<- save_path
+      recipe_data$image_display_url[idx] <<- save_path
     }
     
-    showNotification("✅ Rating and photo saved!")
+    showNotification("✅ Rating and photo saved (in memory only, not permanent).")
   })
 }
 
+# Run the app
 shinyApp(ui = ui, server = server)
