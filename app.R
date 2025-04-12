@@ -51,6 +51,10 @@ filter_recipes <- function(data, tastes, ingredients, cuisine, max_time, categor
 
 # UI
 ui <- fluidPage(
+  tags$img(
+    src = "banner.png",
+    style = "width: 100%; height: auto; aspect-ratio: 3 / 1; object-fit: cover; border-radius: 12px; margin-bottom: 10px;"
+  ),
   titlePanel("🌍 What Should I Cook Today?"),
   
   sidebarLayout(
