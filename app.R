@@ -5,13 +5,13 @@ library(stringr)
 library(DT)
 
 # Load the recipe data
-recipe_data <- read_excel("./dt/World_Cuisine_Recipes_with_Both_Image_Formats.xlsx")
+recipe_data <- read_excel("./dt/World_Cuisine_Recipes_1000_with_Images.xlsx")
 
-# Filtering function with corrected logic
-filter_recipes <- function(data, tastes, ingredients, cuisine) {
+# Filtering function
+filter_recipes <- function(data, tastes, ingredients, cuisine, max_time) {
   df <- data
   
-  # Filter by cuisine (exact match, case-insensitive)
+  # Filter by cuisine
   if (!is.null(cuisine) && cuisine != "Any") {
     df <- df %>% filter(str_to_lower(cuisine) == str_to_lower(!!cuisine))
   }
@@ -24,14 +24,19 @@ filter_recipes <- function(data, tastes, ingredients, cuisine) {
       )
   }
   
-  # Filter by at least one matching ingredient
+  # Filter by ingredients
   if (nchar(ingredients) > 0) {
     ing_list <- str_split(ingredients, ",\\s*")[[1]]
     df <- df %>%
       filter(sapply(ing_list, function(ing) str_detect(ingredients, regex(ing, ignore_case = TRUE))) %>% rowSums() > 0)
   }
   
-  # If empty, return random fallback
+  # Filter by max cooking time
+  if (!is.null(max_time)) {
+    df <- df %>% filter(estimated_time_min <= max_time)
+  }
+  
+  # Fallback if no result
   if (nrow(df) == 0) {
     df <- data[sample(nrow(data), 5), ]
   }
@@ -41,7 +46,7 @@ filter_recipes <- function(data, tastes, ingredients, cuisine) {
 
 # UI
 ui <- fluidPage(
-  titlePanel("🌍 What Should I Cook Today?"),
+  titlePanel("🌍 What Should Anna Cook Today?"),
   
   sidebarLayout(
     sidebarPanel(
@@ -54,6 +59,8 @@ ui <- fluidPage(
       selectInput("cuisine", "Choose a cuisine (optional):",
                   choices = c("Any", sort(unique(recipe_data$cuisine))),
                   selected = "Any"),
+      
+      sliderInput("time_limit", "Maximum cooking time (minutes):", min = 10, max = 120, value = 60, step = 5),
       
       actionButton("suggest", "Suggest Recipes!"),
       hr(),
@@ -76,7 +83,7 @@ server <- function(input, output, session) {
   selected_recipe <- reactiveVal(NULL)
   
   recipe_suggestions <- eventReactive(input$suggest, {
-    filter_recipes(recipe_data, input$tastes, input$ingredients, input$cuisine)
+    filter_recipes(recipe_data, input$tastes, input$ingredients, input$cuisine, input$time_limit)
   })
   
   output$recipe_table <- renderDT({
@@ -120,14 +127,14 @@ server <- function(input, output, session) {
     # Save rating
     recipe_data$user_rating[idx] <<- input$rating_input
     
-    # Save uploaded photo (optional)
+    # Save uploaded photo (if any)
     if (!is.null(input$photo_upload)) {
       save_path <- paste0("www/", input$photo_upload$name)
       file.copy(input$photo_upload$datapath, save_path, overwrite = TRUE)
       recipe_data$image_display_url[idx] <<- save_path
     }
     
-    showNotification("✅ Rating and photo saved (in memory only, not permanent).")
+    showNotification("✅ Rating and photo saved (not persistent yet).")
   })
 }
 
