@@ -8,7 +8,7 @@ library(DT)
 recipe_data <- read_excel("./dt/World_Cuisine_Checked_URLs.xlsx")
 
 # Filtering function
-filter_recipes <- function(data, tastes, ingredients, cuisine, max_time) {
+filter_recipes <- function(data, tastes, ingredients, cuisine, max_time, category) {
   df <- data
   
   # Filter by cuisine
@@ -16,7 +16,12 @@ filter_recipes <- function(data, tastes, ingredients, cuisine, max_time) {
     df <- df %>% filter(str_to_lower(cuisine) == str_to_lower(!!cuisine))
   }
   
-  # Filter by all selected taste tags
+  # Filter by category
+  if (!is.null(category) && category != "Any") {
+    df <- df %>% filter(str_to_lower(category) == str_to_lower(!!category))
+  }
+  
+  # Filter by taste tags
   if (!is.null(tastes) && length(tastes) > 0) {
     df <- df %>%
       filter(
@@ -60,6 +65,10 @@ ui <- fluidPage(
                   choices = c("Any", sort(unique(recipe_data$cuisine))),
                   selected = "Any"),
       
+      selectInput("category", "Choose a food category (optional):",
+                  choices = c("Any", sort(unique(recipe_data$category))),
+                  selected = "Any"),
+      
       sliderInput("time_limit", "Maximum cooking time (minutes):", min = 10, max = 120, value = 60, step = 5),
       
       actionButton("suggest", "Suggest Recipes!"),
@@ -83,7 +92,14 @@ server <- function(input, output, session) {
   selected_recipe <- reactiveVal(NULL)
   
   recipe_suggestions <- eventReactive(input$suggest, {
-    filter_recipes(recipe_data, input$tastes, input$ingredients, input$cuisine, input$time_limit)
+    filter_recipes(
+      recipe_data,
+      input$tastes,
+      input$ingredients,
+      input$cuisine,
+      input$time_limit,
+      input$category
+    )
   })
   
   output$recipe_table <- renderDT({
