@@ -5,7 +5,7 @@ library(stringr)
 library(DT)
 
 # Load the recipe data
-recipe_data <- read_excel("./dt/World_Cuisine_Recipes_1000_with_Images.xlsx")
+recipe_data <- read_excel("./dt/World_Cuisine_Checked_URLs.xlsx")
 
 # Filtering function
 filter_recipes <- function(data, tastes, ingredients, cuisine, max_time) {
